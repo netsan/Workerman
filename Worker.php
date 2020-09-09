@@ -345,6 +345,8 @@ class Worker
     /**
      * All worker instances.
      *
+     * 所有工作worker的数组 [worker_id => instance]
+     *
      * @var Worker[]
      */
     protected static $_workers = array();
@@ -2171,30 +2173,31 @@ class Worker
     /**
      * Construct.
      *
-     * @param string $socket_name
-     * @param array  $context_option
+     * @param string $socket_name       协议+地址+端口: http|tcp|ws
+     * @param array  $context_option    上下文: backlog等参数指定
      */
     public function __construct($socket_name = '', array $context_option = array())
     {
         // Save all worker instances.
-        $this->workerId                    = \spl_object_hash($this);
+        $this->workerId                    = \spl_object_hash($this); // 获取实例的哈希值当作当前workerId，每个实例都是不同的
         static::$_workers[$this->workerId] = $this;
         static::$_pidMap[$this->workerId]  = array();
 
         // Get autoload root path.
-        $backtrace               = \debug_backtrace();
-        $this->_autoloadRootPath = \dirname($backtrace[0]['file']);
-        Autoloader::setRootPath($this->_autoloadRootPath);
+        $backtrace               = \debug_backtrace();              // 获取调用的上下文
+        $this->_autoloadRootPath = \dirname($backtrace[0]['file']); // 获取当前Worker.php的目录，和__DIR__等效
+        Autoloader::setRootPath($this->_autoloadRootPath);          // 设置加载的根目录，使用Workman的Autoloader.php来自动加载。如果用composer来使用workerman，那这个就没啥意义了
 
         // Context for socket.
         if ($socket_name) {
-            $this->_socketName = $socket_name;
-            if (!isset($context_option['socket']['backlog'])) {
-                $context_option['socket']['backlog'] = static::DEFAULT_BACKLOG;
+            $this->_socketName = $socket_name;                                  // 设定网络连接
+            if (!isset($context_option['socket']['backlog'])) {                 // 如果未指定该参数，设定半连接队列的默认大小
+                $context_option['socket']['backlog'] = static::DEFAULT_BACKLOG; // 102400
             }
-            $this->_context = \stream_context_create($context_option);
+            $this->_context = \stream_context_create($context_option);          // 初始化上下文
         }
 
+        // linux系统 + >=7.0.0 + !unix协议 => 开启端口复用
         // Turn reusePort on.
         if (static::$_OS === \OS_TYPE_LINUX  // if linux
             && \version_compare(\PHP_VERSION,'7.0.0', 'ge') // if php >= 7.0.0
